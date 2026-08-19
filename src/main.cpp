@@ -10,7 +10,29 @@
 #include <algorithm>
 #include <semaphore>
 
+#include <libdeflate.h>
+
 using namespace geode::prelude;
+
+std::vector<uint8_t> gzip_compress(const uint8_t* data, size_t size, int level = 12) {
+    libdeflate_compressor* c = libdeflate_alloc_compressor(level);
+    if (!c) return {};
+
+    size_t bound = libdeflate_gzip_compress_bound(c, size);
+    std::vector<uint8_t> out(bound);
+
+    size_t actual = libdeflate_gzip_compress(c, data, size, out.data(), bound);
+    libdeflate_free_compressor(c);
+
+    if (actual == 0) return {};
+    out.resize(actual);
+    return out;
+}
+
+std::string compressWithLibdeflate(const std::string& input) {
+    auto compressedData = gzip_compress(reinterpret_cast<const uint8_t*>(input.data()), input.size());
+    return geode::utils::base64::encode(compressedData, geode::utils::base64::Base64Variant::UrlWithPad);
+}
 
 std::string compressWithZopfli(const std::string& input) {
     ZopfliOptions options;
@@ -52,6 +74,8 @@ void saveLLMZopfli() {
     LLM->encodeDataTo(dict2.get());
 
     auto uncompressedData = dict2->saveRootSubDictToString();
+    auto libdeflateData = compressWithLibdeflate(uncompressedData);
+    geode::utils::file::writeString(geode::dirs::getSaveDir() / "CCLocalLevels_libdeflate.dat", libdeflateData);
     auto compressedData = compressWithZopfli(uncompressedData);
     geode::utils::file::writeString(geode::dirs::getSaveDir() / "CCLocalLevels_compressed.dat", compressedData);
 
@@ -66,6 +90,8 @@ void saveGMZopfli() {
     dict->saveRootSubDictToCompressedFile("CCGameManager_default.dat");
 
     auto uncompressedData = dict->saveRootSubDictToString();
+    auto libdeflateData = compressWithLibdeflate(uncompressedData);
+    geode::utils::file::writeString(geode::dirs::getSaveDir() / "CCGameManager_libdeflate.dat", libdeflateData);
     auto compressedData = compressWithZopfli(uncompressedData);
     geode::utils::file::writeString(geode::dirs::getSaveDir() / "CCGameManager_compressed.dat", compressedData);
 
@@ -117,7 +143,7 @@ $on_game(Loaded) {
                 size_t ogLength = originalStr.size();
                 
                 std::string decompressed = cocos2d::ZipUtils::decompressString(originalStr, false, 0);
-                std::string compressed = compressWithZopfli(decompressed);
+                std::string compressed = compressWithLibdeflate(decompressed);
                 size_t newLength = compressed.size();
 
                 Loader::get()->queueInMainThread([level, compressed = std::move(compressed), &sem, originalStr = std::move(originalStr)]() mutable {
@@ -166,9 +192,16 @@ $on_game(Loaded) {
                 LLM->save();
             }
             //saveLLMZopfli();
-            saveGMZopfli();
+            //saveGMZopfli();
 
-            GameManager::sharedState()->doQuickSave();
+            //GameManager::sharedState()->doQuickSave();
         });
     }).detach();
 }
+
+#include <Geode/modify/GManager.hpp>
+class $modify(GManager) {
+    gd::string getCompressedSaveString() {
+        return compressWithLibdeflate(GManager::getSaveString());
+    }
+};

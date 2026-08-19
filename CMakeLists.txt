@@ -10,8 +10,18 @@ set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
 project(ReduceSaveSize VERSION 1.0.0)
 
+set(LIBDEFLATE_GZIP_SUPPORT ON CACHE BOOL "" FORCE)
+set(LIBDEFLATE_BUILD_GZIP OFF CACHE BOOL "" FORCE)
+set(LIBDEFLATE_BUILD_SHARED_LIB OFF CACHE BOOL "" FORCE)
+
+include($ENV{GEODE_SDK}/cmake/CPM.cmake)
+CPMAddPackage("gh:ebiggers/libdeflate@1.25")
+FetchContent_MakeAvailable(libdeflate)
+
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp src/zopfli/*.c)
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
+
+target_link_libraries(${PROJECT_NAME} libdeflate::libdeflate_static)
 
 if (NOT DEFINED ENV{GEODE_SDK})
     message(FATAL_ERROR "Unable to find Geode SDK! Please define GEODE_SDK environment variable to point to Geode")
