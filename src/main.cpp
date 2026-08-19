@@ -14,6 +14,8 @@
 
 using namespace geode::prelude;
 
+static bool g_initialized = false;
+
 std::vector<uint8_t> gzip_compress(const uint8_t* data, size_t size, int level = 12) {
     libdeflate_compressor* c = libdeflate_alloc_compressor(level);
     if (!c) return {};
@@ -29,8 +31,8 @@ std::vector<uint8_t> gzip_compress(const uint8_t* data, size_t size, int level =
     return out;
 }
 
-std::string compressWithLibdeflate(const std::string& input) {
-    auto compressedData = gzip_compress(reinterpret_cast<const uint8_t*>(input.data()), input.size());
+std::string compressWithLibdeflate(const std::string& input, int level = 12) {
+    auto compressedData = gzip_compress(reinterpret_cast<const uint8_t*>(input.data()), input.size(), level);
     return geode::utils::base64::encode(compressedData, geode::utils::base64::Base64Variant::UrlWithPad);
 }
 
@@ -191,6 +193,8 @@ $on_game(Loaded) {
             if (start.elapsed().seconds() > 60) {
                 LLM->save();
             }
+
+            g_initialized = true;
             //saveLLMZopfli();
             //saveGMZopfli();
 
@@ -203,5 +207,14 @@ $on_game(Loaded) {
 class $modify(GManager) {
     gd::string getCompressedSaveString() {
         return compressWithLibdeflate(GManager::getSaveString());
+    }
+};
+
+#include <Geode/modify/ZipUtils.hpp>
+class $modify(ZipUtils) {
+    static gd::string compressString(gd::string const& data, bool encrypt, int encryptionKey) {
+        if(encrypt || !g_initialized) return ZipUtils::compressString(data, encrypt, encryptionKey);
+
+        return compressWithLibdeflate(data);
     }
 };
