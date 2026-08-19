@@ -8,6 +8,7 @@
 #include <vector>
 #include <atomic>
 #include <algorithm>
+#include <semaphore>
 
 using namespace geode::prelude;
 
@@ -38,71 +39,131 @@ bool isZopfliCompressed(ZStringView input) {
     return ratio < 0.9f;
 }
 
+void saveLLMZopfli() {
+    std::shared_ptr<DS_Dictionary> dict = std::make_shared<DS_Dictionary>();
+    auto LLM = LocalLevelManager::get();
+    LLM->encodeDataTo(dict.get());
+    dict->saveRootSubDictToCompressedFile("CCLocalLevels_default.dat");
+
+    for (auto level : LLM->m_localLevels->asExt<GJGameLevel>()) {
+        level->m_levelString = cocos2d::ZipUtils::decompressString(level->m_levelString, false, 0);
+    }
+    std::shared_ptr<DS_Dictionary> dict2 = std::make_shared<DS_Dictionary>();
+    LLM->encodeDataTo(dict2.get());
+
+    auto uncompressedData = dict2->saveRootSubDictToString();
+    auto compressedData = compressWithZopfli(uncompressedData);
+    geode::utils::file::writeString(geode::dirs::getSaveDir() / "CCLocalLevels_compressed.dat", compressedData);
+
+    log::info("Saved compressed LLM to CCLocalLevels_compressed.dat ({} bytes)", compressedData.size());
+}
+
+void saveGMZopfli() {
+    std::shared_ptr<DS_Dictionary> dict = std::make_shared<DS_Dictionary>();
+    auto GM = GameManager::sharedState();
+    GM->encodeDataTo(dict.get());
+    dict->saveRootSubDictToCompressedFile("CCGameManager_default.dat");
+
+    auto uncompressedData = dict->saveRootSubDictToString();
+    auto compressedData = compressWithZopfli(uncompressedData);
+    geode::utils::file::writeString(geode::dirs::getSaveDir() / "CCGameManager_compressed.dat", compressedData);
+
+    log::info("Saved compressed GM to CCGameManager_compressed.dat ({} bytes)", compressedData.size());
+}
+
 $on_game(Loaded) {
+    asp::Instant start = asp::Instant::now();
     auto LLM = LocalLevelManager::get();
 
     std::vector<Ref<GJGameLevel>> levels;
     for(auto level : LLM->m_localLevels->asExt<GJGameLevel>()) {
         levels.push_back(level);
     }
-    size_t totalLevels = levels.size();
 
-    std::atomic<size_t> currentIdx{0};
-    std::atomic<size_t> completedCount{0};
-    std::atomic<size_t> totalOldSize{0};
-    std::atomic<size_t> totalNewSize{0};
+    std::thread([LLM, levels = std::move(levels), start = start]() mutable {
+        size_t totalLevels = levels.size();
 
-    auto worker = [&]() {
-        while (true) {
-            size_t i = currentIdx.fetch_add(1);
-            if (i >= totalLevels) {
-                break;
+        std::atomic<size_t> currentIdx{0};
+        std::atomic<size_t> completedCount{0};
+        std::atomic<size_t> totalOldSize{0};
+        std::atomic<size_t> totalNewSize{0};
+
+        auto worker = [&]() {
+            while (true) {
+                size_t i = currentIdx.fetch_add(1);
+                if (i >= totalLevels) {
+                    break;
+                }
+
+                auto level = levels[i];
+                
+                std::string originalStr;
+                std::binary_semaphore sem{0};
+                Loader::get()->queueInMainThread([&originalStr, level, &sem]() {
+                    originalStr = level->m_levelString;
+                    sem.release();
+                });
+                sem.acquire();
+
+                if(isZopfliCompressed(originalStr)) {
+                    log::info("Level {} is already compressed, skipping...", i + 1);
+                    completedCount.fetch_add(1);
+                    continue;
+                }
+
+                size_t ogLength = originalStr.size();
+                
+                std::string decompressed = cocos2d::ZipUtils::decompressString(originalStr, false, 0);
+                std::string compressed = compressWithZopfli(decompressed);
+                size_t newLength = compressed.size();
+
+                Loader::get()->queueInMainThread([level, compressed = std::move(compressed), &sem, originalStr = std::move(originalStr)]() mutable {
+                    if(level->m_levelString != originalStr) {
+                        log::warn("Level string changed during compression, skipping update for level {}", level->m_levelID.value());
+                    } else {
+                        level->m_levelString = compressed;
+                    }
+                    sem.release();
+                });
+                sem.acquire();
+
+                totalOldSize.fetch_add(ogLength);
+                totalNewSize.fetch_add(newLength);
+                
+                size_t currentCompleted = completedCount.fetch_add(1) + 1;
+
+                log::info("Compressed level {} / {} ({} bytes to {} bytes)", 
+                        currentCompleted, totalLevels, ogLength, newLength);
             }
+        };
 
-            auto level = levels[i];
-            
-            std::string originalStr = level->m_levelString;
+        unsigned int hardwareThreads = std::thread::hardware_concurrency();
+        unsigned int numThreads = hardwareThreads == 0 ? 4 : std::max(1u, hardwareThreads - 2);
 
-            if(isZopfliCompressed(originalStr)) {
-                log::info("Level {} is already compressed, skipping...", i + 1);
-                completedCount.fetch_add(1);
-                continue;
-            }
+        log::info("Starting Zopfli compression on {} threads for {} levels...", numThreads, totalLevels);
 
-            size_t ogLength = originalStr.size();
-            
-            std::string decompressed = cocos2d::ZipUtils::decompressString(originalStr, false, 0);
-            std::string compressed = compressWithZopfli(decompressed);
-            size_t newLength = compressed.size();
-
-            level->m_levelString = compressed;
-
-            totalOldSize.fetch_add(ogLength);
-            totalNewSize.fetch_add(newLength);
-            
-            size_t currentCompleted = completedCount.fetch_add(1) + 1;
-
-            log::info("Compressed level {} / {} ({} bytes to {} bytes)", 
-                    currentCompleted, totalLevels, ogLength, newLength);
+        std::vector<std::thread> threads;
+        for (unsigned int i = 0; i < numThreads; ++i) {
+            threads.emplace_back(worker);
         }
-    };
 
-    unsigned int hardwareThreads = std::thread::hardware_concurrency();
-    unsigned int numThreads = hardwareThreads == 0 ? 4 : std::max(1u, hardwareThreads - 1);
+        for (auto& t : threads) {
+            t.join();
+        }
 
-    log::info("Starting Zopfli compression on {} threads for {} levels...", numThreads, totalLevels);
+        size_t finalOld = totalOldSize.load();
+        size_t finalNew = totalNewSize.load();
 
-    std::vector<std::thread> threads;
-    for (unsigned int i = 0; i < numThreads; ++i) {
-        threads.emplace_back(worker);
-    }
+        Loader::get()->queueInMainThread([finalOld, finalNew, levels = std::move(levels), start, LLM]() mutable {
+            log::info("Total size reduced from {} bytes to {} bytes ({}% reduction, {} levels processed)", 
+                finalOld, finalNew, 100.0f * (finalOld - finalNew) / finalOld, levels.size());
 
-    for (auto& t : threads) {
-        t.join();
-    }
-
-    size_t finalOld = totalOldSize.load();
-    size_t finalNew = totalNewSize.load();
-    log::info("Total size reduced from {} bytes to {} bytes ({}% reduction)", 
-            finalOld, finalNew, 100.0f * (finalOld - finalNew) / finalOld);
+            log::info("Compression took {}", start.elapsed());
+            if (start.elapsed().seconds() > 60) {
+                LLM->save();
+            }
+            //saveLLMZopfli();
+            //saveGMZopfli();
+        });
+    }).detach();
 }
