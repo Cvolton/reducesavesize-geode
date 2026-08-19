@@ -61,12 +61,15 @@ void saveLLMZopfli() {
 void saveGMZopfli() {
     std::shared_ptr<DS_Dictionary> dict = std::make_shared<DS_Dictionary>();
     auto GM = GameManager::sharedState();
+    GM->m_quickSave = true;
     GM->encodeDataTo(dict.get());
     dict->saveRootSubDictToCompressedFile("CCGameManager_default.dat");
 
     auto uncompressedData = dict->saveRootSubDictToString();
     auto compressedData = compressWithZopfli(uncompressedData);
     geode::utils::file::writeString(geode::dirs::getSaveDir() / "CCGameManager_compressed.dat", compressedData);
+
+    GM->m_quickSave = false;
 
     log::info("Saved compressed GM to CCGameManager_compressed.dat ({} bytes)", compressedData.size());
 }
@@ -163,7 +166,9 @@ $on_game(Loaded) {
                 LLM->save();
             }
             //saveLLMZopfli();
-            //saveGMZopfli();
+            saveGMZopfli();
+
+            GameManager::sharedState()->doQuickSave();
         });
     }).detach();
 }
