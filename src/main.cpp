@@ -76,7 +76,7 @@ $on_game(Loaded) {
                 sem.acquire();
 
                 if(isRecompressed(originalStr)) {
-                    log::info("Level {} is already recompressed, skipping...", i + 1);
+                    log::trace("Level {} is already recompressed, skipping...", i + 1);
                     completedCount.fetch_add(1);
                     continue;
                 }
@@ -102,7 +102,7 @@ $on_game(Loaded) {
                 
                 size_t currentCompleted = completedCount.fetch_add(1) + 1;
 
-                log::info("Compressed level {} / {} ({} bytes to {} bytes)", 
+                log::debug("Compressed level {} / {} ({} bytes to {} bytes)", 
                         currentCompleted, totalLevels, ogLength, newLength);
             }
         };
@@ -110,7 +110,7 @@ $on_game(Loaded) {
         unsigned int hardwareThreads = std::thread::hardware_concurrency();
         unsigned int numThreads = hardwareThreads == 0 ? 4 : std::max(1u, hardwareThreads - 2);
 
-        log::info("Starting re-compression on {} threads for {} levels...", numThreads, totalLevels);
+        log::debug("Starting re-compression on {} threads for {} levels...", numThreads, totalLevels);
 
         std::vector<std::thread> threads;
         for (unsigned int i = 0; i < numThreads; ++i) {
@@ -125,10 +125,10 @@ $on_game(Loaded) {
         size_t finalNew = totalNewSize.load();
 
         Loader::get()->queueInMainThread([finalOld, finalNew, levels = std::move(levels), start, LLM]() mutable {
-            log::info("Total size reduced from {} bytes to {} bytes ({}% reduction, {} levels processed)", 
+            log::debug("Total size reduced from {} bytes to {} bytes ({}% reduction, {} levels processed)", 
                 finalOld, finalNew, 100.0f * (finalOld - finalNew) / finalOld, levels.size());
 
-            log::info("Compression took {}", start.elapsed());
+            log::debug("Compression took {}", start.elapsed());
             if (start.elapsed().seconds() > 60) {
                 LLM->save();
             }
