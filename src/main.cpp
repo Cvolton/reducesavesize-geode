@@ -1,9 +1,6 @@
 #include <Geode/Geode.hpp>
 #include <Geode/utils/base64.hpp>
 
-#include "zopfli/zopfli.h"
-#include "zopfli/zlib_container.h"
-
 #include <thread>
 #include <vector>
 #include <atomic>
@@ -36,70 +33,12 @@ std::string compressWithLibdeflate(const std::string& input, int level = 12) {
     return geode::utils::base64::encode(compressedData, geode::utils::base64::Base64Variant::UrlWithPad);
 }
 
-std::string compressWithZopfli(const std::string& input) {
-    ZopfliOptions options;
-    ZopfliInitOptions(&options);
-    options.numiterations = 15;
-
-    unsigned char* out = nullptr;
-    size_t outsize = 0;
-
-    ZopfliZlibCompress(&options, 
-                        reinterpret_cast<const unsigned char*>(input.data()), 
-                        input.size(), 
-                        &out, 
-                        &outsize);
-
-    std::string result(reinterpret_cast<char*>(out), outsize);
-    free(out); 
-    return geode::utils::base64::encode(result, geode::utils::base64::Base64Variant::UrlWithPad);
-}
-
-bool isZopfliCompressed(ZStringView input) {
+bool isRecompressed(ZStringView input) {
     auto decompressed = cocos2d::ZipUtils::decompressString(input, false, 0);
     auto recompressed = cocos2d::ZipUtils::compressString(decompressed, false, 0);
 
     float ratio = static_cast<float>(input.size()) / static_cast<float>(recompressed.size());
     return ratio < 0.9f;
-}
-
-void saveLLMZopfli() {
-    std::shared_ptr<DS_Dictionary> dict = std::make_shared<DS_Dictionary>();
-    auto LLM = LocalLevelManager::get();
-    LLM->encodeDataTo(dict.get());
-    dict->saveRootSubDictToCompressedFile("CCLocalLevels_default.dat");
-
-    for (auto level : LLM->m_localLevels->asExt<GJGameLevel>()) {
-        level->m_levelString = cocos2d::ZipUtils::decompressString(level->m_levelString, false, 0);
-    }
-    std::shared_ptr<DS_Dictionary> dict2 = std::make_shared<DS_Dictionary>();
-    LLM->encodeDataTo(dict2.get());
-
-    auto uncompressedData = dict2->saveRootSubDictToString();
-    auto libdeflateData = compressWithLibdeflate(uncompressedData);
-    geode::utils::file::writeString(geode::dirs::getSaveDir() / "CCLocalLevels_libdeflate.dat", libdeflateData);
-    auto compressedData = compressWithZopfli(uncompressedData);
-    geode::utils::file::writeString(geode::dirs::getSaveDir() / "CCLocalLevels_compressed.dat", compressedData);
-
-    log::info("Saved compressed LLM to CCLocalLevels_compressed.dat ({} bytes)", compressedData.size());
-}
-
-void saveGMZopfli() {
-    std::shared_ptr<DS_Dictionary> dict = std::make_shared<DS_Dictionary>();
-    auto GM = GameManager::sharedState();
-    GM->m_quickSave = true;
-    GM->encodeDataTo(dict.get());
-    dict->saveRootSubDictToCompressedFile("CCGameManager_default.dat");
-
-    auto uncompressedData = dict->saveRootSubDictToString();
-    auto libdeflateData = compressWithLibdeflate(uncompressedData);
-    geode::utils::file::writeString(geode::dirs::getSaveDir() / "CCGameManager_libdeflate.dat", libdeflateData);
-    auto compressedData = compressWithZopfli(uncompressedData);
-    geode::utils::file::writeString(geode::dirs::getSaveDir() / "CCGameManager_compressed.dat", compressedData);
-
-    GM->m_quickSave = false;
-
-    log::info("Saved compressed GM to CCGameManager_compressed.dat ({} bytes)", compressedData.size());
 }
 
 $on_game(Loaded) {
@@ -136,8 +75,8 @@ $on_game(Loaded) {
                 });
                 sem.acquire();
 
-                if(isZopfliCompressed(originalStr)) {
-                    log::info("Level {} is already compressed, skipping...", i + 1);
+                if(isRecompressed(originalStr)) {
+                    log::info("Level {} is already recompressed, skipping...", i + 1);
                     completedCount.fetch_add(1);
                     continue;
                 }
@@ -171,7 +110,7 @@ $on_game(Loaded) {
         unsigned int hardwareThreads = std::thread::hardware_concurrency();
         unsigned int numThreads = hardwareThreads == 0 ? 4 : std::max(1u, hardwareThreads - 2);
 
-        log::info("Starting Zopfli compression on {} threads for {} levels...", numThreads, totalLevels);
+        log::info("Starting re-compression on {} threads for {} levels...", numThreads, totalLevels);
 
         std::vector<std::thread> threads;
         for (unsigned int i = 0; i < numThreads; ++i) {
@@ -195,10 +134,6 @@ $on_game(Loaded) {
             }
 
             g_initialized = true;
-            //saveLLMZopfli();
-            //saveGMZopfli();
-
-            //GameManager::sharedState()->doQuickSave();
         });
     }).detach();
 }
