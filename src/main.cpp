@@ -34,6 +34,8 @@ std::string compressWithLibdeflate(const std::string& input, int level = 12) {
 }
 
 bool isRecompressed(ZStringView input) {
+    if(input.empty()) return true;
+
     auto decompressed = cocos2d::ZipUtils::decompressString(input, false, 0);
     auto recompressed = cocos2d::ZipUtils::compressString(decompressed, false, 0);
 
