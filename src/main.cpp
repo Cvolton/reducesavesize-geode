@@ -132,6 +132,6 @@ class $modify(ZipUtils) {
     static gd::string compressString(gd::string const& data, bool encrypt, int encryptionKey) {
         if(encrypt || !g_initialized) return ZipUtils::compressString(data, encrypt, encryptionKey);
 
-        return ReduceSaveSize::compressWithLibdeflate(data);
+        return ReduceSaveSize::compressWithLibdeflateParallel(data);
     }
 };

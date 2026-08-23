@@ -125,7 +125,7 @@ class $modify(GJAccountManager) {
         forceRenderFrame();
         log::info("Uncompressed save string, {}", instant.elapsed());
 
-        gmString = ReduceSaveSize::compressWithLibdeflate(gmString);
+        gmString = ReduceSaveSize::compressWithLibdeflateParallel(gmString);
         log::info("Compressed save string, {}", instant.elapsed());
 
         prepareBar->updateProgress(45.f);
@@ -144,7 +144,7 @@ class $modify(GJAccountManager) {
         prepareBar->updateProgress(75.f);
         forceRenderFrame();
 
-        llmString = ReduceSaveSize::compressWithLibdeflate(llmString);
+        llmString = ReduceSaveSize::compressWithLibdeflateParallel(llmString);
         log::info("Compressed local level manager string, {}", instant.elapsed());
 
         prepareBar->updateProgress(90.f);
