@@ -15,17 +15,35 @@ class $modify(RSSAccountLayer, AccountLayer) {
     void customSetup() {
         AccountLayer::customSetup();
 
-        constexpr float globalOffset = 0; //- 10.f;
+        constexpr float globalOffset = 16; //- 10.f;
 
         createBar("account-backup-prepare-bar"_spr, 73.f - globalOffset, "Preparing:");
         createBar("account-backup-progress-bar"_spr, 93.f - globalOffset, "Uploading:");
 
-        auto bg = NineSlice::create("square02_001.png");
+        auto label = Label::create("Saving account data", "goldFont.fnt");
+        label->setPosition({ (this->getContentWidth() / 2), (this->getContentHeight() / 2) + 80.f });
+        label->setScale(.8f);
+        label->setVisible(false);
+        label->setID("account-backup-label"_spr);
+        m_mainLayer->addChild(label, 110);
+
+        auto loadingCircle = LoadingSpinner::create(65.f);
+        loadingCircle->setPosition({ (this->getContentWidth() / 2), (this->getContentHeight() / 2) + 8.f });
+        loadingCircle->setID("account-backup-loading-circle"_spr);
+        loadingCircle->setVisible(false);
+        m_mainLayer->addChild(loadingCircle, 110);
+
+        auto cclayercolor = CCLayerColor::create(ccc4(0, 0, 0, 75));
+        cclayercolor->setVisible(false);
+        cclayercolor->setID("account-backup-cclayercolor"_spr);
+        m_mainLayer->addChild(cclayercolor, 108);
+
+        /*auto bg = NineSlice::create("square02_001.png");
         bg->setContentSize({ 320.f, 50.f });
         bg->setAnchorPoint({ 0.5f, 0.5f });
         bg->setPosition({ (this->getContentWidth() / 2), (this->getContentHeight() / 2) - 83.f  + globalOffset });
         bg->setOpacity(230);
-        m_mainLayer->addChild(bg, 109);
+        m_mainLayer->addChild(bg, 109);*/
     }
 
     void createBar(ZStringView id, float offset, ZStringView text) {
@@ -58,6 +76,24 @@ class $modify(GJAccountManager) {
 
         auto uploadBar = Ref(typeinfo_cast<ProgressBar*>(CCScene::get()->getChildByIDRecursive("account-backup-progress-bar"_spr)));
         uploadBar->setVisible(true);
+
+        auto label = Ref(typeinfo_cast<Label*>(CCScene::get()->getChildByIDRecursive("account-backup-label"_spr)));
+        label->setVisible(true);
+
+        auto loadingCircle = Ref(typeinfo_cast<LoadingSpinner*>(CCScene::get()->getChildByIDRecursive("account-backup-loading-circle"_spr)));
+        loadingCircle->setVisible(true);
+
+        auto cclayercolor = Ref(typeinfo_cast<CCLayerColor*>(CCScene::get()->getChildByIDRecursive("account-backup-cclayercolor"_spr)));
+        cclayercolor->setVisible(true);
+
+        Ref<AccountLayer> accLayer;
+        if(auto parent = prepareBar->getParent()) {
+            if((accLayer = typeinfo_cast<AccountLayer*>(parent->getParent())) != nullptr) {
+                accLayer->m_linkedAccountTitle->setVisible(false);
+                accLayer->m_buttonMenu->setVisible(false);
+                accLayer->m_loadingCircle->setVisible(false);
+            }
+        }
 
         auto instant = asp::Instant::now();
 
@@ -118,12 +154,25 @@ class $modify(GJAccountManager) {
 
         m_fields->m_listener.spawn(
             req.post(url),
-            [this, uploadBar, prepareBar](web::WebResponse res) {
+            [this, uploadBar, prepareBar, accLayer, label, loadingCircle, cclayercolor](web::WebResponse res) {
                 if(uploadBar) {
                     uploadBar->setVisible(false);
                 }
                 if(prepareBar) {
                     prepareBar->setVisible(false);
+                }
+                if(accLayer) {
+                    accLayer->m_linkedAccountTitle->setVisible(true);
+                    accLayer->m_buttonMenu->setVisible(true);
+                }
+                if(label) {
+                    label->setVisible(false);
+                }
+                if(loadingCircle) {
+                    loadingCircle->setVisible(false);
+                }
+                if(cclayercolor) {
+                    cclayercolor->setVisible(false);
                 }
                 /*if(res.error() || res.string().unwrapOrDefault() != "1") {
                     log::error("Failed to backup account: {}", res.string().unwrapOrDefault());
