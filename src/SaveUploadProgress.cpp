@@ -1,4 +1,5 @@
 #include <Geode/Geode.hpp>
+#include "utils.hpp"
 
 using namespace geode::prelude;
 
@@ -114,25 +115,39 @@ class $modify(GJAccountManager) {
 
         MusicDownloadManager::sharedState()->clearUnusedSongs();
 
-        prepareBar->updateProgress(25.f);
+        prepareBar->updateProgress(15.f);
         forceRenderFrame();
 
         log::info("Cleared unused songs, starting backup... {}", instant.elapsed());
 
-        auto gmString = GM->getCompressedSaveString();
+        auto gmString = GM->getSaveString();
+        prepareBar->updateProgress(30.f);
+        forceRenderFrame();
+        log::info("Uncompressed save string, {}", instant.elapsed());
+
+        gmString = ReduceSaveSize::compressWithLibdeflate(gmString);
         log::info("Compressed save string, {}", instant.elapsed());
 
-        prepareBar->updateProgress(50.f);
+        prepareBar->updateProgress(45.f);
         forceRenderFrame();
 
         m_gameManagerSize = gmString.size();
 
         auto LLM = LocalLevelManager::get();
         LLM->updateLevelOrder();
-        auto llmString = LLM->getCompressedSaveString();
+        prepareBar->updateProgress(60.f);
+        forceRenderFrame();
+        log::info("Updated LLM order, {}", instant.elapsed());
+
+        auto llmString = LLM->getSaveString();
+        log::info("Uncompressed local level manager string, {}", instant.elapsed());
+        prepareBar->updateProgress(75.f);
+        forceRenderFrame();
+
+        llmString = ReduceSaveSize::compressWithLibdeflate(llmString);
         log::info("Compressed local level manager string, {}", instant.elapsed());
 
-        prepareBar->updateProgress(75.f);
+        prepareBar->updateProgress(90.f);
         forceRenderFrame();
 
         m_localLevelsSize = llmString.size();

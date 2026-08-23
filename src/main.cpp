@@ -7,31 +7,11 @@
 #include <algorithm>
 #include <semaphore>
 
-#include <libdeflate.h>
+#include "utils.hpp"
 
 using namespace geode::prelude;
 
 static bool g_initialized = false;
-
-std::vector<uint8_t> gzip_compress(const uint8_t* data, size_t size, int level = 12) {
-    libdeflate_compressor* c = libdeflate_alloc_compressor(level);
-    if (!c) return {};
-
-    size_t bound = libdeflate_gzip_compress_bound(c, size);
-    std::vector<uint8_t> out(bound);
-
-    size_t actual = libdeflate_gzip_compress(c, data, size, out.data(), bound);
-    libdeflate_free_compressor(c);
-
-    if (actual == 0) return {};
-    out.resize(actual);
-    return out;
-}
-
-std::string compressWithLibdeflate(const std::string& input, int level = 12) {
-    auto compressedData = gzip_compress(reinterpret_cast<const uint8_t*>(input.data()), input.size(), level);
-    return geode::utils::base64::encode(compressedData, geode::utils::base64::Base64Variant::UrlWithPad);
-}
 
 bool isRecompressed(ZStringView input) {
     if(input.empty()) return true;
@@ -86,7 +66,7 @@ $on_game(Loaded) {
                 size_t ogLength = originalStr.size();
                 
                 std::string decompressed = cocos2d::ZipUtils::decompressString(originalStr, false, 0);
-                std::string compressed = compressWithLibdeflate(decompressed);
+                std::string compressed = ReduceSaveSize::compressWithLibdeflate(decompressed);
                 size_t newLength = compressed.size();
 
                 Loader::get()->queueInMainThread([level, compressed = std::move(compressed), &sem, originalStr = std::move(originalStr)]() mutable {
@@ -140,18 +120,18 @@ $on_game(Loaded) {
     }).detach();
 }
 
-#include <Geode/modify/GManager.hpp>
+/*#include <Geode/modify/GManager.hpp>
 class $modify(GManager) {
     gd::string getCompressedSaveString() {
         return compressWithLibdeflate(GManager::getSaveString());
     }
-};
+};*/
 
 #include <Geode/modify/ZipUtils.hpp>
 class $modify(ZipUtils) {
     static gd::string compressString(gd::string const& data, bool encrypt, int encryptionKey) {
         if(encrypt || !g_initialized) return ZipUtils::compressString(data, encrypt, encryptionKey);
 
-        return compressWithLibdeflate(data);
+        return ReduceSaveSize::compressWithLibdeflate(data);
     }
 };
