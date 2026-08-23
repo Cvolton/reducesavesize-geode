@@ -19,7 +19,7 @@ class $modify(GJAccountManager) {
         }
 
         GJAccountManager::onGetAccountBackupURLCompleted(response, tag);
-        m_backupDelegate->backupAccountFailed(BackupAccountError::GenericError, -1);
+        // m_backupDelegate->backupAccountFailed(BackupAccountError::GenericError, -1);
 
         GM->setGameVariable(GameVar::SaveGauntlets, var);
     }
