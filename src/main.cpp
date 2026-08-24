@@ -43,10 +43,12 @@ $on_game(Loaded) {
         std::atomic<size_t> totalOldSize{0};
         std::atomic<size_t> totalNewSize{0};
 
-        auto insertHashThreadSafe = [&hashes](std::string const& hash) {
+        std::unordered_set<std::string> newHashes;
+
+        auto insertHashThreadSafe = [&newHashes](std::string const& hash) {
             static std::mutex mtx;
             std::lock_guard lock(mtx);
-            hashes.insert(hash);
+            newHashes.insert(hash);
         };
 
         auto worker = [&]() {
@@ -69,13 +71,12 @@ $on_game(Loaded) {
                 sem.acquire();
 
                 auto hash = sha256(originalStr).toString();
+                insertHashThreadSafe(hash);
                 if(hashes.contains(hash)) {
                     log::trace("Level {} is already hashed, skipping...", i + 1);
                     completedCount.fetch_add(1);
                     continue;
                 }
-
-                insertHashThreadSafe(hash);
 
                 if(isRecompressed(originalStr)) {
                     log::trace("Level {} is already recompressed, skipping...", i + 1);
@@ -126,7 +127,7 @@ $on_game(Loaded) {
         size_t finalOld = totalOldSize.load();
         size_t finalNew = totalNewSize.load();
 
-        Loader::get()->queueInMainThread([finalOld, finalNew, levels = std::move(levels), start, LLM, hashes = std::move(hashes)]() mutable {
+        Loader::get()->queueInMainThread([finalOld, finalNew, levels = std::move(levels), start, LLM, hashes = std::move(newHashes)]() mutable {
             log::debug("Total size reduced from {} bytes to {} bytes ({}% reduction, {} levels processed)", 
                 finalOld, finalNew, 100.0f * (finalOld - finalNew) / finalOld, levels.size());
 
