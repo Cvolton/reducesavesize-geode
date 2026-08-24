@@ -23,6 +23,8 @@ bool shouldSkipLocalLevels() {
     return false;
 }
 
+constexpr const float TO_MB = 9.536743e-07;
+
 #include <Geode/modify/AccountLayer.hpp>
 class $modify(RSSAccountLayer, AccountLayer) {
     void customSetup() {
@@ -107,6 +109,28 @@ class $modify(GJAccountManager) {
                 accLayer->m_loadingCircle->setVisible(false);
             }
         }
+
+        std::function<void()> hideCustomUI = [uploadBar, prepareBar, accLayer, label, loadingCircle, cclayercolor]() {
+            if(uploadBar) {
+                uploadBar->setVisible(false);
+            }
+            if(prepareBar) {
+                prepareBar->setVisible(false);
+            }
+            if(accLayer) {
+                accLayer->m_linkedAccountTitle->setVisible(true);
+                accLayer->m_buttonMenu->setVisible(true);
+            }
+            if(label) {
+                label->setVisible(false);
+            }
+            if(loadingCircle) {
+                loadingCircle->setVisible(false);
+            }
+            if(cclayercolor) {
+                cclayercolor->setVisible(false);
+            }
+        };
 
         auto instant = asp::Instant::now();
 
@@ -199,55 +223,56 @@ class $modify(GJAccountManager) {
 
         m_GJP2 = gjp2;
 
-        std::string postString = GameLevelManager::sharedState()->getBasePostString() + "&saveData=" + gmString + ";" + llmString + "&secret=Wmfv3899gc9";
+        float fullSaveSize = (m_gameManagerSize * TO_MB) + (m_localLevelsSize * TO_MB);
+        log::info("Full save size: {} MB (GM: {} MB, LLM: {} MB)", fullSaveSize, m_gameManagerSize * TO_MB, m_localLevelsSize * TO_MB);
 
-        auto req = web::WebRequest();
-        req.onProgress([uploadBar, prepareBar](web::WebProgress const& p) mutable {
-            if(uploadBar) {
-                uploadBar->updateProgress(p.uploadProgress().value_or(0.f));
+        std::function<void()> doSave = [this, hideCustomUI, gmString = std::move(gmString), llmString = std::move(llmString), uploadBar, prepareBar, GM, url, instant, accLayer]() mutable {
+            std::string postString = GameLevelManager::sharedState()->getBasePostString() + "&saveData=" + gmString + ";" + llmString + "&secret=Wmfv3899gc9";
+
+            if(accLayer) {
+                accLayer->m_textArea->setString("");
             }
-        });
-        req.bodyString(postString).userAgent("");
 
-        m_fields->m_listener.spawn(
-            req.post(url),
-            [this, uploadBar, prepareBar, accLayer, label, loadingCircle, cclayercolor](web::WebResponse res) {
+            auto req = web::WebRequest();
+            req.onProgress([uploadBar, prepareBar](web::WebProgress const& p) mutable {
                 if(uploadBar) {
-                    uploadBar->setVisible(false);
+                    uploadBar->updateProgress(p.uploadProgress().value_or(0.f));
                 }
-                if(prepareBar) {
-                    prepareBar->setVisible(false);
-                }
-                if(accLayer) {
-                    accLayer->m_linkedAccountTitle->setVisible(true);
-                    accLayer->m_buttonMenu->setVisible(true);
-                }
-                if(label) {
-                    label->setVisible(false);
-                }
-                if(loadingCircle) {
-                    loadingCircle->setVisible(false);
-                }
-                if(cclayercolor) {
-                    cclayercolor->setVisible(false);
-                }
-                /*if(res.error() || res.string().unwrapOrDefault() != "1") {
-                    log::error("Failed to backup account: {}", res.string().unwrapOrDefault());
-                    m_backupDelegate->backupAccountFailed(BackupAccountError::GenericError, -1);
-                }
-                else {
-                    log::info("Successfully backed up account");
-                    m_backupDelegate->backupAccountFinished();
-                }*/
-                GJAccountManager::handleIt(res.error(), res.string().unwrapOrDefault(), "bak_account", GJHttpType::BackupAccount);
-            }
-        );
+            });
+            req.bodyString(postString).userAgent("");
 
-        GM->m_quickSave = false;
+            m_fields->m_listener.spawn(
+                req.post(url),
+                [this, hideCustomUI = std::move(hideCustomUI)](web::WebResponse res) mutable {
+                    hideCustomUI();
+                    GJAccountManager::handleIt(res.error(), res.string().unwrapOrDefault(), "bak_account", GJHttpType::BackupAccount);
+                }
+            );
 
-        log::info("Backup request sent, {}", instant.elapsed());
-        prepareBar->updateProgress(100.f);
-        forceRenderFrame();
+            GM->m_quickSave = false;
+
+            log::info("Backup request sent, {}", instant.elapsed());
+            prepareBar->updateProgress(100.f);
+            forceRenderFrame();
+        };
+
+        if(fullSaveSize > 32.f) {
+            createQuickPopup(
+                "Save file too large", 
+                fmt::format("Your save file is <cr>too large</c> to be saved.\n<cy>Size: {:.2f}/32MB</c> <co>(Profile: {:.2f}, Levels: {:.2f})</c>\n<cg>Try anyway?</c> <cr>(it will fail)</c>", fullSaveSize, m_gameManagerSize * TO_MB, m_localLevelsSize * TO_MB), 
+                "No", "Yes", [this, doSave, hideCustomUI](FLAlertLayer *alert, bool btn2) mutable {
+                    if(btn2) {
+                        doSave();
+                    } else {
+                        hideCustomUI();
+                        GJAccountManager::handleIt(false, "-1", "bak_account", GJHttpType::BackupAccount);
+                    }
+                }
+            );
+            return false;
+        }
+
+        doSave();
 
         return true;
     }
