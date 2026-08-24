@@ -1,4 +1,5 @@
 #include <Geode/Geode.hpp>
+#include <semaphore>
 #include "utils.hpp"
 
 using namespace geode::prelude;
@@ -124,46 +125,73 @@ class $modify(GJAccountManager) {
         log::info("Backing up account to {}...", url);
         log::info("Current time: {}", instant.elapsed());
 
-        // GM saving
-        MusicDownloadManager::sharedState()->clearUnusedSongs();
+        std::counting_semaphore<> sem{0};
 
-        prepareBar->updateProgress(15.f);
-        forceRenderFrame();
-
-        log::info("Cleared unused songs, starting backup... {}", instant.elapsed());
-
-        auto gmString = GM->getSaveString();
-        prepareBar->updateProgress(30.f);
-        forceRenderFrame();
-        log::info("Uncompressed save string, {}", instant.elapsed());
-
-        gmString = ReduceSaveSize::compressWithLibdeflateParallel(gmString);
-        log::info("Compressed save string, {}", instant.elapsed());
-
-        prepareBar->updateProgress(45.f);
-        forceRenderFrame();
-
-        m_gameManagerSize = gmString.size();
+        std::string gmString;
+        std::string llmString;
 
         // LLM saving
-        gd::string llmString;
+        bool shouldSkip = shouldSkipLocalLevels();
+        if(!shouldSkip) {
+            async::runtime().spawnBlocking<void>([&sem, this, instant, &llmString]{
+                auto LLM = LocalLevelManager::get();
+                LLM->updateLevelOrder();
+                sem.release();
+                log::info("Updated LLM order, {}", instant.elapsed());
 
-        if(!shouldSkipLocalLevels()) {
-            auto LLM = LocalLevelManager::get();
-            LLM->updateLevelOrder();
-            prepareBar->updateProgress(60.f);
-            forceRenderFrame();
-            log::info("Updated LLM order, {}", instant.elapsed());
+                llmString = LLM->getSaveString();
+                log::info("Uncompressed local level manager string, {}", instant.elapsed());
+                sem.release();
 
-            llmString = LLM->getSaveString();
-            log::info("Uncompressed local level manager string, {}", instant.elapsed());
-            prepareBar->updateProgress(75.f);
-            forceRenderFrame();
-
-            llmString = ReduceSaveSize::compressWithLibdeflateParallel(llmString);
-            log::info("Compressed local level manager string, {}", instant.elapsed());
+                llmString = ReduceSaveSize::compressWithLibdeflateParallel(llmString);
+                log::info("Compressed local level manager string, {}", instant.elapsed());
+                sem.release();
+            });
         }
 
+        // GM saving
+        // clearUnusedSongs needs to be outside of the blocking thread because it creates CCStrings
+        // and therefore interacts with the autorelease pool
+        MusicDownloadManager::sharedState()->clearUnusedSongs();
+        async::runtime().spawnBlocking<void>([&sem, this, instant, GM, &gmString]{
+            sem.release();
+
+            log::info("Cleared unused songs, starting backup... {}", instant.elapsed());
+            gmString = GM->getSaveString();
+            log::info("Uncompressed save string, {}", instant.elapsed());
+            sem.release();
+
+            gmString = ReduceSaveSize::compressWithLibdeflateParallel(gmString);
+            log::info("Compressed save string, {}", instant.elapsed());
+            m_gameManagerSize = gmString.size();
+            sem.release();
+        });
+
+        // waiting for LLM
+        if(!shouldSkip) {
+            sem.acquire();
+            prepareBar->updateProgress(15.f);
+            forceRenderFrame();
+
+            sem.acquire();
+            prepareBar->updateProgress(30.f);
+            forceRenderFrame();
+
+            sem.acquire();
+            prepareBar->updateProgress(45.f);
+            forceRenderFrame();
+        }
+
+        // waiting for GM
+        sem.acquire();
+        prepareBar->updateProgress(60.f);
+        forceRenderFrame();
+
+        sem.acquire();
+        prepareBar->updateProgress(75.f);
+        forceRenderFrame();
+
+        sem.acquire();
         prepareBar->updateProgress(90.f);
         forceRenderFrame();
 
@@ -178,9 +206,6 @@ class $modify(GJAccountManager) {
             if(uploadBar) {
                 uploadBar->updateProgress(p.uploadProgress().value_or(0.f));
             }
-
-            log::info("download progress: {}", p.downloadProgress().value_or(0.f));
-            log::info("upload progress: {}", p.uploadProgress().value_or(0.f));
         });
         req.bodyString(postString).userAgent("");
 
@@ -217,6 +242,8 @@ class $modify(GJAccountManager) {
                 GJAccountManager::handleIt(res.error(), res.string().unwrapOrDefault(), "bak_account", GJHttpType::BackupAccount);
             }
         );
+
+        GM->m_quickSave = false;
 
         log::info("Backup request sent, {}", instant.elapsed());
         prepareBar->updateProgress(100.f);
