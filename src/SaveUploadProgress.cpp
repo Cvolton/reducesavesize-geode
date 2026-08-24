@@ -11,6 +11,17 @@ void forceRenderFrame() {
     director->m_bPaused = ogPaused;
 }
 
+bool shouldSkipLocalLevels() {
+    if(auto mod = Loader::get()->getInstalledMod("cvolton.ignore_created_levels_when_cloud_saving")) {
+        if(auto scene = CCScene::get()) {
+            if(auto ignoreCheck = typeinfo_cast<CCMenuItemToggler*>(scene->getChildByIDRecursive("cvolton.ignore_created_levels_when_cloud_saving/include-levels-check"))) {
+                return !ignoreCheck->isOn();
+            }
+        }
+    }
+    return false;
+}
+
 #include <Geode/modify/AccountLayer.hpp>
 class $modify(RSSAccountLayer, AccountLayer) {
     void customSetup() {
@@ -113,6 +124,7 @@ class $modify(GJAccountManager) {
         log::info("Backing up account to {}...", url);
         log::info("Current time: {}", instant.elapsed());
 
+        // GM saving
         MusicDownloadManager::sharedState()->clearUnusedSongs();
 
         prepareBar->updateProgress(15.f);
@@ -133,19 +145,24 @@ class $modify(GJAccountManager) {
 
         m_gameManagerSize = gmString.size();
 
-        auto LLM = LocalLevelManager::get();
-        LLM->updateLevelOrder();
-        prepareBar->updateProgress(60.f);
-        forceRenderFrame();
-        log::info("Updated LLM order, {}", instant.elapsed());
+        // LLM saving
+        gd::string llmString;
 
-        auto llmString = LLM->getSaveString();
-        log::info("Uncompressed local level manager string, {}", instant.elapsed());
-        prepareBar->updateProgress(75.f);
-        forceRenderFrame();
+        if(!shouldSkipLocalLevels()) {
+            auto LLM = LocalLevelManager::get();
+            LLM->updateLevelOrder();
+            prepareBar->updateProgress(60.f);
+            forceRenderFrame();
+            log::info("Updated LLM order, {}", instant.elapsed());
 
-        llmString = ReduceSaveSize::compressWithLibdeflateParallel(llmString);
-        log::info("Compressed local level manager string, {}", instant.elapsed());
+            llmString = LLM->getSaveString();
+            log::info("Uncompressed local level manager string, {}", instant.elapsed());
+            prepareBar->updateProgress(75.f);
+            forceRenderFrame();
+
+            llmString = ReduceSaveSize::compressWithLibdeflateParallel(llmString);
+            log::info("Compressed local level manager string, {}", instant.elapsed());
+        }
 
         prepareBar->updateProgress(90.f);
         forceRenderFrame();
