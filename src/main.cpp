@@ -1,5 +1,6 @@
 #include <Geode/Geode.hpp>
 #include <Geode/utils/base64.hpp>
+#include <Geode/utils/hash.hpp>
 
 #include <thread>
 #include <vector>
@@ -32,7 +33,9 @@ $on_game(Loaded) {
         levels.push_back(level);
     }
 
-    std::thread([LLM, levels = std::move(levels), start = start]() mutable {
+    auto hashes = Mod::get()->getSavedValue<std::unordered_set<std::string>>("hashes");
+
+    std::thread([LLM, levels = std::move(levels), start = start, hashes = std::move(hashes)]() mutable {
         size_t totalLevels = levels.size();
 
         std::atomic<size_t> currentIdx{0};
@@ -40,7 +43,15 @@ $on_game(Loaded) {
         std::atomic<size_t> totalOldSize{0};
         std::atomic<size_t> totalNewSize{0};
 
+        auto insertHashThreadSafe = [&hashes](std::string const& hash) {
+            static std::mutex mtx;
+            std::lock_guard lock(mtx);
+            hashes.insert(hash);
+        };
+
         auto worker = [&]() {
+            auto newHashes = std::unordered_set<std::string>();
+
             while (true) {
                 size_t i = currentIdx.fetch_add(1);
                 if (i >= totalLevels) {
@@ -56,6 +67,15 @@ $on_game(Loaded) {
                     sem.release();
                 });
                 sem.acquire();
+
+                auto hash = sha256(originalStr).toString();
+                if(hashes.contains(hash)) {
+                    log::trace("Level {} is already hashed, skipping...", i + 1);
+                    completedCount.fetch_add(1);
+                    continue;
+                }
+
+                insertHashThreadSafe(hash);
 
                 if(isRecompressed(originalStr)) {
                     log::trace("Level {} is already recompressed, skipping...", i + 1);
@@ -106,7 +126,7 @@ $on_game(Loaded) {
         size_t finalOld = totalOldSize.load();
         size_t finalNew = totalNewSize.load();
 
-        Loader::get()->queueInMainThread([finalOld, finalNew, levels = std::move(levels), start, LLM]() mutable {
+        Loader::get()->queueInMainThread([finalOld, finalNew, levels = std::move(levels), start, LLM, hashes = std::move(hashes)]() mutable {
             log::debug("Total size reduced from {} bytes to {} bytes ({}% reduction, {} levels processed)", 
                 finalOld, finalNew, 100.0f * (finalOld - finalNew) / finalOld, levels.size());
 
@@ -114,6 +134,8 @@ $on_game(Loaded) {
             if (start.elapsed().seconds() > 60) {
                 LLM->save();
             }
+
+            Mod::get()->setSavedValue("hashes", std::move(hashes));
 
             g_initialized = true;
         });
