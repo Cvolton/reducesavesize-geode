@@ -7,7 +7,7 @@
 		"ios": "2.2081"
 	},
 	"id": "cvolton.reduce-save-size",
-	"name": "Reduce Save Size",
+	"name": "Cloud Save Optimizations",
 	"version": "v1.0.0",
 	"developer": "Cvolton",
 	"description": "Optimizes save file size without losing data"
