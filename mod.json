@@ -10,8 +10,5 @@
 	"name": "Reduce Save Size",
 	"version": "v1.0.0",
 	"developer": "Cvolton",
-	"description": "Optimizes save file size without losing data",
-	"dependencies": {
-		"geode.node-ids": ">=v1.23.3"
-	}
+	"description": "Optimizes save file size without losing data"
 }
