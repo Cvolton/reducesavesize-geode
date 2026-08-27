@@ -134,7 +134,7 @@ $on_game(Loaded) {
             log::debug("Compression took {}", start.elapsed());
 
             Mod::get()->setSavedValue("hashes", std::move(hashes));
-            if (start.elapsed().seconds() > 60) {
+            if (start.elapsed().seconds() > 20) {
                 LLM->save();
                 (void) Mod::get()->saveData();
             }
