@@ -256,7 +256,7 @@ class $modify(GJAccountManager) {
             forceRenderFrame();
         };
 
-        if(fullSaveSize > 32.f) {
+        /*if(fullSaveSize > 32.f) {
             createQuickPopup(
                 "Save file too large", 
                 fmt::format("Your save file is <cr>too large</c> to be saved.\n<cy>Size: {:.2f}/32MB</c> <co>(Profile: {:.2f}, Levels: {:.2f})</c>\n<cg>Try anyway?</c> <cr>(it will fail)</c>", fullSaveSize, m_gameManagerSize * TO_MB, m_localLevelsSize * TO_MB), 
@@ -270,7 +270,7 @@ class $modify(GJAccountManager) {
                 }
             );
             return false;
-        }
+        }*/
 
         doSave();
 
