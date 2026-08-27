@@ -132,11 +132,12 @@ $on_game(Loaded) {
                 finalOld, finalNew, 100.0f * (finalOld - finalNew) / finalOld, levels.size());
 
             log::debug("Compression took {}", start.elapsed());
-            if (start.elapsed().seconds() > 60) {
-                LLM->save();
-            }
 
             Mod::get()->setSavedValue("hashes", std::move(hashes));
+            if (start.elapsed().seconds() > 60) {
+                LLM->save();
+                (void) Mod::get()->saveData();
+            }
 
             g_initialized = true;
         });
