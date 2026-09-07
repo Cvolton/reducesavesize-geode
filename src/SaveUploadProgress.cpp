@@ -167,7 +167,7 @@ class $modify(GJAccountManager) {
                 log::info("Uncompressed local level manager string, {}", instant.elapsed());
                 sem.release();
 
-                llmString = ReduceSaveSize::compressWithLibdeflateParallel(llmString);
+                llmString = ReduceSaveSize::compressWithLibdeflate(llmString);
                 log::info("Compressed local level manager string, {}", instant.elapsed());
                 sem.release();
             });
@@ -185,7 +185,7 @@ class $modify(GJAccountManager) {
             log::info("Uncompressed save string, {}", instant.elapsed());
             sem.release();
 
-            gmString = ReduceSaveSize::compressWithLibdeflateParallel(gmString);
+            gmString = ReduceSaveSize::compressWithLibdeflate(gmString);
             log::info("Compressed save string, {}", instant.elapsed());
             m_gameManagerSize = gmString.size();
             sem.release();

@@ -13,6 +13,7 @@
 using namespace geode::prelude;
 
 static bool g_initialized = false;
+static bool g_isCompressing = false;
 
 bool isRecompressed(ZStringView input) {
     if(input.empty()) return true;
@@ -24,7 +25,9 @@ bool isRecompressed(ZStringView input) {
     return ratio < 0.9f;
 }
 
-$on_game(Loaded) {
+void runCompression() {
+    g_initialized = false;
+
     asp::Instant start = asp::Instant::now();
     auto LLM = LocalLevelManager::get();
 
@@ -140,8 +143,22 @@ $on_game(Loaded) {
             }
 
             g_initialized = true;
+            g_isCompressing = false;
         });
     }).detach();
+}
+
+void scheduleRunCompression() {
+    if(g_isCompressing) return;
+    g_isCompressing = true;
+
+    Loader::get()->queueInMainThread([]() {
+        runCompression();
+    });
+}
+
+$on_game(Loaded) {
+    scheduleRunCompression();
 }
 
 /*#include <Geode/modify/GManager.hpp>
@@ -151,11 +168,29 @@ class $modify(GManager) {
     }
 };*/
 
+static bool g_isSavingLevel = false;
+
 #include <Geode/modify/ZipUtils.hpp>
 class $modify(ZipUtils) {
-    static gd::string compressString(gd::string const& data, bool encrypt, int encryptionKey) {
-        if(encrypt || !g_initialized) return ZipUtils::compressString(data, encrypt, encryptionKey);
+    static void onModify(auto& self) {
+        (void)self.setHookPriority("ZipUtils::compressString", Priority::VeryLate);
+    }
 
-        return ReduceSaveSize::compressWithLibdeflateParallel(data);
+    static gd::string compressString(gd::string const& data, bool encrypt, int encryptionKey) {
+        if(g_isSavingLevel && !encrypt && g_initialized) {
+            scheduleRunCompression();
+            return ReduceSaveSize::compressWithLibdeflate(data, 0);
+        }
+
+        return ZipUtils::compressString(data, encrypt, encryptionKey);
+    }
+};
+
+#include <Geode/modify/EditorPauseLayer.hpp>
+class $modify(EditorPauseLayer) {
+    void saveLevel() {
+        g_isSavingLevel = true;
+        EditorPauseLayer::saveLevel();
+        g_isSavingLevel = false;
     }
 };
