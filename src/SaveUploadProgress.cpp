@@ -245,7 +245,7 @@ class $modify(GJAccountManager) {
                 req.post(url),
                 [this, hideCustomUI = std::move(hideCustomUI)](web::WebResponse res) mutable {
                     hideCustomUI();
-                    GJAccountManager::handleIt(res.error(), res.string().unwrapOrDefault(), "bak_account", GJHttpType::BackupAccount);
+                    GJAccountManager::handleIt(!res.error(), res.string().unwrapOrDefault(), "bak_account", GJHttpType::BackupAccount);
                 }
             );
 
