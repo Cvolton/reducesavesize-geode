@@ -86,6 +86,21 @@ class $modify(GJAccountManager) {
     bool backupAccount(gd::string url) {
         if(GJAccountManager::isDLActive("bak_account")) return 0;
 
+        // Fix stale dailies
+        auto GM = GameManager::sharedState();
+        auto saveGauntlets = GM->getGameVariable(GameVar::SaveGauntlets);
+        GM->setGameVariable(GameVar::SaveGauntlets, 0);
+
+        auto GLM = GameLevelManager::get();
+        for(auto [_, level] : GLM->m_dailyLevels->asExt<gd::string, GJGameLevel*>()) {
+            level->m_levelString = "";
+
+            if(level->m_dailyID != GLM->m_activeDailyID && level->m_dailyID != GLM->m_activeWeeklyID && level->m_dailyID != GLM->m_activeEventID) {
+                level->m_levelNotDownloaded = true;
+            }
+        }
+
+        // Show custom UI
         auto prepareBar = Ref(typeinfo_cast<ProgressBar*>(CCScene::get()->getChildByIDRecursive("account-backup-prepare-bar"_spr)));
         prepareBar->setVisible(true);
 
@@ -143,7 +158,6 @@ class $modify(GJAccountManager) {
         auto gjp2 = m_GJP2;
         m_GJP2 = "";
 
-        auto GM = GameManager::sharedState();
         GM->m_quickSave = true;
 
         log::info("Backing up account to {}...", url);
@@ -256,6 +270,9 @@ class $modify(GJAccountManager) {
         }*/
 
         doSave();
+
+        // Revert states
+        GM->setGameVariable(GameVar::SaveGauntlets, saveGauntlets);
 
         return true;
     }
