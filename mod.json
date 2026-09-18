@@ -11,5 +11,8 @@
 	"version": "v1.0.0-beta.1",
 	"developer": "Cvolton",
 	"description": "Optimizes save file size without losing data",
-	"tags": ["utility", "performance"]
+	"tags": ["utility", "performance"],
+	"links": {
+		"source": "https://github.com/Cvolton/reducesavesize-geode"
+	}
 }
