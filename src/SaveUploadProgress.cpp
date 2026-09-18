@@ -227,7 +227,7 @@ class $modify(GJAccountManager) {
         log::info("Full save size: {} MB (GM: {} MB, LLM: {} MB)", fullSaveSize, m_gameManagerSize * TO_MB, m_localLevelsSize * TO_MB);
 
         std::function<void()> doSave = [this, hideCustomUI, gmString = std::move(gmString), llmString = std::move(llmString), uploadBar, prepareBar, GM, url, instant, accLayer]() mutable {
-            std::string postString = GameLevelManager::sharedState()->getBasePostString() + "&saveData=" + gmString + ";" + llmString + "&secret=Wmfv3899gc9";
+            std::string postString = fmt::format("{}&saveData={};{}&secret=Wmfv3899gc9", GameLevelManager::sharedState()->getBasePostString(), gmString, llmString);
 
             if(accLayer) {
                 accLayer->m_textArea->setString("");
