@@ -8,7 +8,8 @@
 	},
 	"id": "cvolton.reduce-save-size",
 	"name": "Cloud Save Optimizations",
-	"version": "v1.0.0",
+	"version": "v1.0.0-beta.1",
 	"developer": "Cvolton",
-	"description": "Optimizes save file size without losing data"
+	"description": "Optimizes save file size without losing data",
+	"tags": ["utility", "performance"]
 }
