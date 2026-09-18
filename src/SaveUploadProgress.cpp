@@ -154,19 +154,22 @@ class $modify(GJAccountManager) {
         std::string gmString;
         std::string llmString;
 
+        // Prepare
+        MusicDownloadManager::sharedState()->clearUnusedSongs();
+        prepareBar->updateProgress(20.f);
+        forceRenderFrame();
+
         // LLM saving
         bool shouldSkip = shouldSkipLocalLevels();
+        auto LLM = LocalLevelManager::get();
+        LLM->updateLevelOrder();
+        llmString = LLM->getSaveString();
+        
+        prepareBar->updateProgress(40.f);
+        forceRenderFrame();
+
         if(!shouldSkip) {
             async::runtime().spawnBlocking<void>([&sem, this, instant, &llmString]{
-                auto LLM = LocalLevelManager::get();
-                LLM->updateLevelOrder();
-                sem.release();
-                log::info("Updated LLM order, {}", instant.elapsed());
-
-                llmString = LLM->getSaveString();
-                log::info("Uncompressed local level manager string, {}", instant.elapsed());
-                sem.release();
-
                 llmString = ReduceSaveSize::compressWithLibdeflate(llmString);
                 log::info("Compressed local level manager string, {}", instant.elapsed());
                 sem.release();
@@ -176,50 +179,30 @@ class $modify(GJAccountManager) {
         // GM saving
         // clearUnusedSongs needs to be outside of the blocking thread because it creates CCStrings
         // and therefore interacts with the autorelease pool
-        MusicDownloadManager::sharedState()->clearUnusedSongs();
+
+        gmString = GM->getSaveString();
+
         async::runtime().spawnBlocking<void>([&sem, this, instant, GM, &gmString]{
-            sem.release();
-
-            log::info("Cleared unused songs, starting backup... {}", instant.elapsed());
-            gmString = GM->getSaveString();
-            log::info("Uncompressed save string, {}", instant.elapsed());
-            sem.release();
-
             gmString = ReduceSaveSize::compressWithLibdeflate(gmString);
             log::info("Compressed save string, {}", instant.elapsed());
-            m_gameManagerSize = gmString.size();
+            
             sem.release();
         });
 
-        // waiting for LLM
-        if(!shouldSkip) {
-            sem.acquire();
-            prepareBar->updateProgress(15.f);
-            forceRenderFrame();
-
-            sem.acquire();
-            prepareBar->updateProgress(30.f);
-            forceRenderFrame();
-
-            sem.acquire();
-            prepareBar->updateProgress(45.f);
-            forceRenderFrame();
-        }
-
         // waiting for GM
-        sem.acquire();
         prepareBar->updateProgress(60.f);
         forceRenderFrame();
 
         sem.acquire();
-        prepareBar->updateProgress(75.f);
+        prepareBar->updateProgress(80.f);
         forceRenderFrame();
 
         sem.acquire();
-        prepareBar->updateProgress(90.f);
+        prepareBar->updateProgress(95.f);
         forceRenderFrame();
 
         m_localLevelsSize = llmString.size();
+        m_gameManagerSize = gmString.size();
 
         m_GJP2 = gjp2;
 
