@@ -83,7 +83,7 @@ class $modify(GJAccountManager) {
         TaskHolder<web::WebResponse> m_listener;
     };
 
-    bool backupAccount(gd::string url) {
+    bool backupAccount(std::string url) {
         if(GJAccountManager::isDLActive("bak_account")) return 0;
 
         // Fix stale dailies
@@ -92,7 +92,7 @@ class $modify(GJAccountManager) {
         GM->setGameVariable(GameVar::SaveGauntlets, 0);
 
         auto GLM = GameLevelManager::get();
-        for(auto [_, level] : GLM->m_dailyLevels->asExt<gd::string, GJGameLevel*>()) {
+        for(auto [_, level] : GLM->m_dailyLevels->asExt<std::string, GJGameLevel*>()) {
             level->m_levelString = "";
 
             if(level->m_dailyID != GLM->m_activeDailyID && level->m_dailyID != GLM->m_activeWeeklyID && level->m_dailyID != GLM->m_activeEventID) {

@@ -1,6 +1,6 @@
 #include <Geode/Geode.hpp>
 #include <Geode/utils/base64.hpp>
-#include <Geode/utils/hash.hpp>
+#include <Geode/utils/crypto.hpp>
 
 #include <thread>
 #include <vector>
@@ -19,7 +19,7 @@ bool isRecompressed(ZStringView input) {
     if(input.empty()) return true;
 
     auto decompressed = cocos2d::ZipUtils::decompressString(input, false, 0);
-    auto recompressed = cocos2d::ZipUtils::compressString(decompressed, false, 0);
+    auto recompressed = cocos2d::ZipUtils::compressString(decompressed, false, -1, 0);
 
     float ratio = static_cast<float>(input.size()) / static_cast<float>(recompressed.size());
     return ratio < 0.9f;
@@ -138,7 +138,7 @@ void runCompression() {
 
             Mod::get()->setSavedValue("hashes", std::move(hashes));
             if (start.elapsed().seconds() > 20) {
-                LLM->save();
+                LLM->save(false);
                 (void) Mod::get()->saveData();
             }
 
@@ -163,7 +163,7 @@ $on_game(Loaded) {
 
 /*#include <Geode/modify/GManager.hpp>
 class $modify(GManager) {
-    gd::string getCompressedSaveString() {
+    std::string getCompressedSaveString() {
         return compressWithLibdeflate(GManager::getSaveString());
     }
 };*/
@@ -176,21 +176,21 @@ class $modify(ZipUtils) {
         (void)self.setHookPriority("ZipUtils::compressString", Priority::VeryLate);
     }
 
-    static gd::string compressString(gd::string const& data, bool encrypt, int encryptionKey) {
+    static std::string compressString(std::string const& data, bool encrypt, int level, int encryptionKey) {
         if(g_isSavingLevel && !encrypt && g_initialized) {
             scheduleRunCompression();
             return ReduceSaveSize::compressWithLibdeflate(data, 0);
         }
 
-        return ZipUtils::compressString(data, encrypt, encryptionKey);
+        return ZipUtils::compressString(data, encrypt, level, encryptionKey);
     }
 };
 
-#include <Geode/modify/EditorPauseLayer.hpp>
-class $modify(EditorPauseLayer) {
+#include <Geode/modify/LevelEditorLayer.hpp>
+class $modify(LevelEditorLayer) {
     void saveLevel() {
         g_isSavingLevel = true;
-        EditorPauseLayer::saveLevel();
+        LevelEditorLayer::saveLevel();
         g_isSavingLevel = false;
     }
 };
