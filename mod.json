@@ -1,5 +1,5 @@
 {
-	"geode": "6.0.0-beta.1",
+	"geode": "6.0.0",
 	"gd": {
 		"win": "2.2091",
 		"android": "2.2091",
@@ -8,7 +8,7 @@
 	},
 	"id": "cvolton.reduce-save-size",
 	"name": "Cloud Save Optimizations",
-	"version": "v1.0.0-beta.2",
+	"version": "v1.1.0",
 	"developer": "Cvolton",
 	"description": "Optimizes save file size without losing data",
 	"tags": ["utility", "performance"],
